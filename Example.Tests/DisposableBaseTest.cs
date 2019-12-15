@@ -69,18 +69,30 @@ namespace Example.Tests
         {
             var disposedManagedResources = false;
             var disposedUnmanagedResources = false;
+            // We can't initialize the weak reference until we've created our
+            // disposable, which we don't want to do in the current scope.
             WeakReference<Disposable> weakReference = null;
+            // We create a delegate we can execute later in the test.
             Action dispose = () =>
             {
                 // This will go out of scope after dispose() is executed.
                 var disposable = new Disposable(
                     onDisposeManagedResources: () => disposedManagedResources = true,
                     onDisposeUnmanagedResources: () => disposedUnmanagedResources = true);
+                // Create our weak reference, rooted in the outer scope, and
+                // passing true to the second argument will allow it to continue
+                // tracking the object after finalization.
                 weakReference = new WeakReference<Disposable>(disposable, true);
             };
 
+            // Execute our test action.
             dispose();
+            // Force the GC to collect at this point. Given we haven't GC'd at
+            // this point before and our references are heap allocated, this
+            // means they exist in generation 0.
             GC.Collect(0, GCCollectionMode.Forced);
+            // Block until the GC has finished processing the finalizer queue
+            // for collected objects.
             GC.WaitForPendingFinalizers();
 
             Assert.False(disposedManagedResources);
